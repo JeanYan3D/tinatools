@@ -9,8 +9,10 @@
 // Autoriser les requêtes cross-origin (CORS) - Version PHP
 // Ces en-têtes fonctionnent même sans mod_headers
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Credentials: true');
+header('Access-Control-Max-Age: 3600');
 
 // Gérer les requêtes OPTIONS (pre-flight)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -21,6 +23,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Définir le type de contenu de la réponse
 header('Content-Type: application/json');
+
+// Journaliser les informations de requête pour le débogage
+$request_data = [
+    'method' => $_SERVER['REQUEST_METHOD'],
+    'headers' => getallheaders(),
+    'get' => $_GET,
+    'post' => $_POST,
+    'raw_input' => file_get_contents('php://input')
+];
+
+// Si c'est une requête GET, afficher une page de test/diagnostic
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    echo json_encode([
+        'status' => 'ok',
+        'message' => 'Le service Google Docs Creator est en ligne',
+        'debug_info' => $request_data,
+        'instructions' => 'Envoyez une requête POST avec les paramètres "title" et "content" pour créer un document'
+    ], JSON_PRETTY_PRINT);
+    exit;
+}
 
 // Inclure la bibliothèque Google API Client
 require_once __DIR__ . '/vendor/autoload.php';
