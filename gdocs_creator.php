@@ -107,28 +107,33 @@ $requestData = json_decode(file_get_contents('php://input'), true);
 // Pour le débogage, loguer la requête entrante
 logRequest($requestData, null);
 
-// Essayer d'extraire le titre de la requête
+// Traiter différents formats de requête
 $title = null;
-$content = "Ceci est un document test créé automatiquement pour vérifier l'intégration entre Vapi.ai et Google Docs.";
+$content = null;
 
 // Format direct : {"title": "...", "content": "..."}
-if (isset($requestData['title'])) {
+if (isset($requestData['title']) && isset($requestData['content'])) {
     $title = $requestData['title'];
+    $content = $requestData['content'];
 } 
 // Format Vapi.ai complet
 else if (isset($requestData['message']) && isset($requestData['message']['tool_calls']) && is_array($requestData['message']['tool_calls'])) {
     foreach ($requestData['message']['tool_calls'] as $toolCall) {
         if (isset($toolCall['function'])) {
             // Vérifier si les arguments sont directement accessibles comme un tableau
-            if (isset($toolCall['function']['arguments']) && is_array($toolCall['function']['arguments']) && isset($toolCall['function']['arguments']['title'])) {
-                $title = $toolCall['function']['arguments']['title'];
-                break;
+            if (isset($toolCall['function']['arguments']) && is_array($toolCall['function']['arguments'])) {
+                if (isset($toolCall['function']['arguments']['title']) && isset($toolCall['function']['arguments']['content'])) {
+                    $title = $toolCall['function']['arguments']['title'];
+                    $content = $toolCall['function']['arguments']['content'];
+                    break;
+                }
             }
             // Vérifier si les arguments sont une chaîne JSON à décoder
             else if (isset($toolCall['function']['arguments']) && is_string($toolCall['function']['arguments'])) {
                 $args = json_decode($toolCall['function']['arguments'], true);
-                if (isset($args['title'])) {
+                if (isset($args['title']) && isset($args['content'])) {
                     $title = $args['title'];
+                    $content = $args['content'];
                     break;
                 }
             }
@@ -136,15 +141,27 @@ else if (isset($requestData['message']) && isset($requestData['message']['tool_c
     }
 }
 
-// Si aucun titre n'a été trouvé, utiliser un titre par défaut
-if (!$title) {
-    $title = "Document test créé le " . date('Y-m-d H:i:s');
-}
+// Journaliser les valeurs extraites pour le débogage
+file_put_contents($log_file, "Titre extrait: " . ($title ?? "non trouvé") . "\n", FILE_APPEND);
+file_put_contents($log_file, "Contenu extrait: " . ($content ?? "non trouvé") . "\n", FILE_APPEND);
+file_put_contents($log_file, "Structure de la requête: " . print_r($requestData, true) . "\n", FILE_APPEND);
 
-// Journaliser les valeurs pour le débogage
-file_put_contents($log_file, "Titre extrait ou par défaut: " . $title . "\n", FILE_APPEND);
-file_put_contents($log_file, "Contenu par défaut: " . $content . "\n", FILE_APPEND);
-file_put_contents($log_file, "Structure de la requête originale: " . print_r($requestData, true) . "\n", FILE_APPEND);
+// Vérifier que les données nécessaires sont présentes
+if (!$title || !$content) {
+    $response = [
+        'success' => false,
+        'message' => 'Erreur: Titre et contenu requis',
+        'debug_info' => [
+            'request_data' => $requestData,
+            'extracted_title' => $title,
+            'extracted_content' => $content
+        ]
+    ];
+    
+    logRequest($requestData, $response);
+    echo json_encode($response);
+    exit;
+}
 
 try {
     // Créer un client Google authentifié
