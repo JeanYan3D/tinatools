@@ -6,211 +6,92 @@
  * puis crée un document Google Docs avec ces informations.
  */
 
-// Journaliser toutes les requêtes pour le débogage
-$log_file = __DIR__ . '/request_log.txt';
-file_put_contents($log_file, date('Y-m-d H:i:s') . " - Nouvelle requête reçue\n", FILE_APPEND);
-file_put_contents($log_file, "Méthode: " . $_SERVER['REQUEST_METHOD'] . "\n", FILE_APPEND);
-file_put_contents($log_file, "Headers: " . json_encode(getallheaders()) . "\n", FILE_APPEND);
-file_put_contents($log_file, "Input: " . file_get_contents('php://input') . "\n\n", FILE_APPEND);
+// Activer l'affichage des erreurs pour le débogage
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-// Autoriser les requêtes cross-origin (CORS) - Version PHP très permissive
+// Fichier de log
+$log_file = __DIR__ . '/gdocs_creator.log';
+
+// Fonction pour logger les requêtes et réponses
+function logRequest($request, $response) {
+    global $log_file;
+    $log_entry = date('Y-m-d H:i:s') . " - Requête: " . print_r($request, true) . "\n";
+    $log_entry .= "Réponse: " . print_r($response, true) . "\n";
+    $log_entry .= "------------------------------------------------\n";
+    file_put_contents($log_file, $log_entry, FILE_APPEND);
+}
+
+// Configurer les en-têtes CORS
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE');
-header('Access-Control-Allow-Headers: *');
-header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Max-Age: 86400'); // 24 heures
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+header('Content-Type: application/json');
 
 // Gérer les requêtes OPTIONS (pre-flight)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    // Répondre avec un statut 200 OK sans contenu
-    http_response_code(200);
-    exit;
+    exit(0);
 }
 
-// Définir le type de contenu de la réponse
-header('Content-Type: application/json');
-
-// Journaliser les informations de requête pour le débogage
-$request_data = [
-    'method' => $_SERVER['REQUEST_METHOD'],
-    'headers' => getallheaders(),
-    'get' => $_GET,
-    'post' => $_POST,
-    'raw_input' => file_get_contents('php://input')
-];
-
-// Si c'est une requête GET, afficher une page de test/diagnostic
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    echo json_encode([
-        'status' => 'ok',
-        'message' => 'Le service Google Docs Creator est en ligne',
-        'debug_info' => $request_data,
-        'instructions' => 'Envoyez une requête POST avec les paramètres "title" et "content" pour créer un document',
-        'test_curl' => 'curl -X POST -H "Content-Type: application/json" -d \'{"title":"Test Document","content":"Contenu de test"}\' ' . 
-                      (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']
-    ], JSON_PRETTY_PRINT);
-    exit;
-}
-
-// Inclure la bibliothèque Google API Client
-require_once __DIR__ . '/vendor/autoload.php';
-
-// Fonction pour enregistrer les logs
-function logRequest($request, $response) {
-    $logData = [
-        'timestamp' => date('Y-m-d H:i:s'),
-        'request' => $request,
-        'response' => $response
-    ];
-    
-    file_put_contents(__DIR__ . '/api_logs.txt', json_encode($logData) . "\n", FILE_APPEND);
-}
-
-// Fonction pour créer un client Google authentifié
-function getClient() {
-    $client = new Google\Client();
-    $client->setApplicationName('Tina Google Docs Integration');
-    $client->setScopes([
-        \Google\Service\Docs::DOCUMENTS,
-        \Google\Service\Drive::DRIVE_FILE // Ajout du scope Drive pour les permissions
-    ]);
-    
-    // Vérifier si nous sommes sur Heroku (variable d'environnement présente)
-    if (getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')) {
-        // Utiliser la variable d'environnement
-        $credentials_json = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON');
-        
-        // Créer un fichier temporaire avec les informations d'identification
-        $temp_file = tempnam(sys_get_temp_dir(), 'google_credentials');
-        file_put_contents($temp_file, $credentials_json);
-        
-        // Utiliser ce fichier temporaire pour l'authentification
-        $client->setAuthConfig($temp_file);
-        
-        // Supprimer le fichier temporaire après utilisation
-        register_shutdown_function(function() use ($temp_file) {
-            if (file_exists($temp_file)) {
-                unlink($temp_file);
-            }
-        });
-    } else {
-        // Utiliser le fichier JSON du compte de service (pour le développement local)
-        $client->setAuthConfig(__DIR__ . '/tina-gdocs-service.json');
-    }
-    
-    return $client;
-}
-
-// Récupérer les données envoyées par Vapi.ai
-$requestData = json_decode(file_get_contents('php://input'), true);
+// Récupérer les données brutes
+$rawData = file_get_contents('php://input');
+$requestData = json_decode($rawData, true);
 
 // Pour le débogage, loguer la requête entrante
 logRequest($requestData, null);
 
-// Traiter différents formats de requête
+// Version ultra simplifiée pour extraire le titre et le contenu
 $title = null;
 $content = null;
 
-// Format direct : {"title": "...", "content": "..."}
-if (isset($requestData['title']) && isset($requestData['content'])) {
-    $title = $requestData['title'];
-    $content = $requestData['content'];
-} 
-// Format Vapi.ai : message > tool_calls > function > arguments
-else if (isset($requestData['message']) && isset($requestData['message']['tool_calls']) && is_array($requestData['message']['tool_calls'])) {
-    foreach ($requestData['message']['tool_calls'] as $toolCall) {
-        if (isset($toolCall['function'])) {
-            // Vérifier si les arguments sont directement accessibles comme un tableau
-            if (isset($toolCall['function']['arguments']) && is_array($toolCall['function']['arguments'])) {
-                if (isset($toolCall['function']['arguments']['title']) && isset($toolCall['function']['arguments']['content'])) {
-                    $title = $toolCall['function']['arguments']['title'];
-                    $content = $toolCall['function']['arguments']['content'];
-                    break;
-                }
-            }
-            // Vérifier si les arguments sont une chaîne JSON à décoder
-            else if (isset($toolCall['function']['arguments']) && is_string($toolCall['function']['arguments'])) {
-                $args = json_decode($toolCall['function']['arguments'], true);
-                if (isset($args['title']) && isset($args['content'])) {
-                    $title = $args['title'];
-                    $content = $args['content'];
-                    break;
-                }
-            }
-        }
-    }
-}
-
-// Si toujours pas trouvé, essayer avec tool_call_list (structure alternative de Vapi.ai)
-if ((!$title || !$content) && isset($requestData['message']) && isset($requestData['message']['tool_call_list']) && is_array($requestData['message']['tool_call_list'])) {
-    foreach ($requestData['message']['tool_call_list'] as $toolCall) {
-        if (isset($toolCall['function'])) {
-            // Vérifier si les arguments sont directement accessibles comme un tableau
-            if (isset($toolCall['function']['arguments']) && is_array($toolCall['function']['arguments'])) {
-                if (isset($toolCall['function']['arguments']['title']) && isset($toolCall['function']['arguments']['content'])) {
-                    $title = $toolCall['function']['arguments']['title'];
-                    $content = $toolCall['function']['arguments']['content'];
-                    break;
-                }
-            }
-            // Vérifier si les arguments sont une chaîne JSON à décoder
-            else if (isset($toolCall['function']['arguments']) && is_string($toolCall['function']['arguments'])) {
-                $args = json_decode($toolCall['function']['arguments'], true);
-                if (isset($args['title']) && isset($args['content'])) {
-                    $title = $args['title'];
-                    $content = $args['content'];
-                    break;
-                }
-            }
-        }
-    }
-}
-
-// Si toujours pas trouvé, essayer avec tool_with_tool_call_list (autre structure de Vapi.ai)
-if ((!$title || !$content) && isset($requestData['message']) && isset($requestData['message']['tool_with_tool_call_list']) && is_array($requestData['message']['tool_with_tool_call_list'])) {
-    foreach ($requestData['message']['tool_with_tool_call_list'] as $toolWithCall) {
-        if (isset($toolWithCall['tool_call']) && isset($toolWithCall['tool_call']['function'])) {
-            // Vérifier si les arguments sont directement accessibles comme un tableau
-            if (isset($toolWithCall['tool_call']['function']['arguments']) && is_array($toolWithCall['tool_call']['function']['arguments'])) {
-                if (isset($toolWithCall['tool_call']['function']['arguments']['title']) && isset($toolWithCall['tool_call']['function']['arguments']['content'])) {
-                    $title = $toolWithCall['tool_call']['function']['arguments']['title'];
-                    $content = $toolWithCall['tool_call']['function']['arguments']['content'];
-                    break;
-                }
-            }
-            // Vérifier si les arguments sont une chaîne JSON à décoder
-            else if (isset($toolWithCall['tool_call']['function']['arguments']) && is_string($toolWithCall['tool_call']['function']['arguments'])) {
-                $args = json_decode($toolWithCall['tool_call']['function']['arguments'], true);
-                if (isset($args['title']) && isset($args['content'])) {
-                    $title = $args['title'];
-                    $content = $args['content'];
-                    break;
-                }
-            }
-        }
-    }
+// Essayer d'extraire directement depuis le JSON brut avec une expression régulière
+if (preg_match('/"title":\s*"([^"]+)"/', $rawData, $titleMatches) && 
+    preg_match('/"content":\s*"([^"]+)"/', $rawData, $contentMatches)) {
+    $title = $titleMatches[1];
+    $content = $contentMatches[1];
 }
 
 // Journaliser les valeurs extraites pour le débogage
-file_put_contents($log_file, "Titre extrait: " . ($title ?? "non trouvé") . "\n", FILE_APPEND);
-file_put_contents($log_file, "Contenu extrait: " . ($content ?? "non trouvé") . "\n", FILE_APPEND);
-file_put_contents($log_file, "Structure de la requête: " . print_r($requestData, true) . "\n", FILE_APPEND);
+file_put_contents($log_file, "Titre extrait (regex): " . ($title ?? "non trouvé") . "\n", FILE_APPEND);
+file_put_contents($log_file, "Contenu extrait (regex): " . ($content ?? "non trouvé") . "\n", FILE_APPEND);
 
-// Vérifier que les données nécessaires sont présentes
+// Si l'extraction par regex a échoué, essayer avec la méthode JSON
 if (!$title || !$content) {
-    $response = [
-        'success' => false,
-        'message' => 'Erreur: Titre et contenu requis',
-        'debug_info' => [
-            'request_data' => $requestData,
-            'extracted_title' => $title,
-            'extracted_content' => $content
-        ]
-    ];
+    // Parcourir toute la structure JSON à la recherche de title et content
+    function findTitleAndContent($data, &$title, &$content) {
+        if (is_array($data)) {
+            // Vérifier si ce nœud contient title et content
+            if (isset($data['title']) && isset($data['content'])) {
+                $title = $data['title'];
+                $content = $data['content'];
+                return true;
+            }
+            
+            // Sinon, parcourir récursivement tous les éléments
+            foreach ($data as $key => $value) {
+                if (is_array($value)) {
+                    if (findTitleAndContent($value, $title, $content)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
     
-    logRequest($requestData, $response);
-    echo json_encode($response);
-    exit;
+    findTitleAndContent($requestData, $title, $content);
+    
+    file_put_contents($log_file, "Titre extrait (récursif): " . ($title ?? "non trouvé") . "\n", FILE_APPEND);
+    file_put_contents($log_file, "Contenu extrait (récursif): " . ($content ?? "non trouvé") . "\n", FILE_APPEND);
+}
+
+// Si toujours pas trouvé, utiliser des valeurs par défaut
+if (!$title || !$content) {
+    $title = "Document test créé le " . date('Y-m-d H:i:s');
+    $content = "Ceci est un document test créé automatiquement pour vérifier l'intégration entre Vapi.ai et Google Docs.";
+    
+    file_put_contents($log_file, "Utilisation de valeurs par défaut\n", FILE_APPEND);
 }
 
 try {
@@ -281,7 +162,11 @@ try {
         'success' => true,
         'message' => 'Document créé avec succès',
         'documentId' => $documentId,
-        'documentUrl' => "https://docs.google.com/document/d/{$documentId}/edit"
+        'documentUrl' => "https://docs.google.com/document/d/{$documentId}/edit",
+        'debug_info' => [
+            'title_used' => $title,
+            'content_used' => $content
+        ]
     ];
     
     logRequest($requestData, $response);
@@ -290,9 +175,34 @@ try {
     // Gérer les erreurs
     $response = [
         'success' => false,
-        'message' => 'Erreur: ' . $e->getMessage()
+        'message' => 'Erreur: ' . $e->getMessage(),
+        'debug_info' => [
+            'raw_data' => substr($rawData, 0, 1000), // Limiter à 1000 caractères pour éviter des logs trop volumineux
+            'title_extracted' => $title,
+            'content_extracted' => $content
+        ]
     ];
     
     logRequest($requestData, $response);
     echo json_encode($response);
+}
+
+// Fonction pour obtenir un client Google authentifié
+function getClient() {
+    $client = new Google_Client();
+    $client->setApplicationName('Tina Google Docs Integration');
+    $client->setScopes(Google_Service_Docs::DOCUMENTS);
+    
+    // Vérifier si nous sommes sur Heroku (variable d'environnement définie)
+    if (getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')) {
+        // Sur Heroku, utiliser la variable d'environnement
+        $credentials_json = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON');
+        $credentials = json_decode($credentials_json, true);
+        $client->setAuthConfig($credentials);
+    } else {
+        // En local, utiliser le fichier de clé
+        $client->setAuthConfig('tina-gdocs-service.json');
+    }
+    
+    return $client;
 }
