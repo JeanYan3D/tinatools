@@ -6,13 +6,19 @@
  * puis crée un document Google Docs avec ces informations.
  */
 
-// Autoriser les requêtes cross-origin (CORS) - Version PHP
-// Ces en-têtes fonctionnent même sans mod_headers
+// Journaliser toutes les requêtes pour le débogage
+$log_file = __DIR__ . '/request_log.txt';
+file_put_contents($log_file, date('Y-m-d H:i:s') . " - Nouvelle requête reçue\n", FILE_APPEND);
+file_put_contents($log_file, "Méthode: " . $_SERVER['REQUEST_METHOD'] . "\n", FILE_APPEND);
+file_put_contents($log_file, "Headers: " . json_encode(getallheaders()) . "\n", FILE_APPEND);
+file_put_contents($log_file, "Input: " . file_get_contents('php://input') . "\n\n", FILE_APPEND);
+
+// Autoriser les requêtes cross-origin (CORS) - Version PHP très permissive
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE');
+header('Access-Control-Allow-Headers: *');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Max-Age: 3600');
+header('Access-Control-Max-Age: 86400'); // 24 heures
 
 // Gérer les requêtes OPTIONS (pre-flight)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -39,7 +45,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'status' => 'ok',
         'message' => 'Le service Google Docs Creator est en ligne',
         'debug_info' => $request_data,
-        'instructions' => 'Envoyez une requête POST avec les paramètres "title" et "content" pour créer un document'
+        'instructions' => 'Envoyez une requête POST avec les paramètres "title" et "content" pour créer un document',
+        'test_curl' => 'curl -X POST -H "Content-Type: application/json" -d \'{"title":"Test Document","content":"Contenu de test"}\' ' . 
+                      (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']
     ], JSON_PRETTY_PRINT);
     exit;
 }
