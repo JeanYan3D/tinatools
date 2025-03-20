@@ -116,7 +116,7 @@ if (isset($requestData['title']) && isset($requestData['content'])) {
     $title = $requestData['title'];
     $content = $requestData['content'];
 } 
-// Format Vapi.ai complet
+// Format Vapi.ai : message > tool_calls > function > arguments
 else if (isset($requestData['message']) && isset($requestData['message']['tool_calls']) && is_array($requestData['message']['tool_calls'])) {
     foreach ($requestData['message']['tool_calls'] as $toolCall) {
         if (isset($toolCall['function'])) {
@@ -131,6 +131,56 @@ else if (isset($requestData['message']) && isset($requestData['message']['tool_c
             // Vérifier si les arguments sont une chaîne JSON à décoder
             else if (isset($toolCall['function']['arguments']) && is_string($toolCall['function']['arguments'])) {
                 $args = json_decode($toolCall['function']['arguments'], true);
+                if (isset($args['title']) && isset($args['content'])) {
+                    $title = $args['title'];
+                    $content = $args['content'];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// Si toujours pas trouvé, essayer avec tool_call_list (structure alternative de Vapi.ai)
+if ((!$title || !$content) && isset($requestData['message']) && isset($requestData['message']['tool_call_list']) && is_array($requestData['message']['tool_call_list'])) {
+    foreach ($requestData['message']['tool_call_list'] as $toolCall) {
+        if (isset($toolCall['function'])) {
+            // Vérifier si les arguments sont directement accessibles comme un tableau
+            if (isset($toolCall['function']['arguments']) && is_array($toolCall['function']['arguments'])) {
+                if (isset($toolCall['function']['arguments']['title']) && isset($toolCall['function']['arguments']['content'])) {
+                    $title = $toolCall['function']['arguments']['title'];
+                    $content = $toolCall['function']['arguments']['content'];
+                    break;
+                }
+            }
+            // Vérifier si les arguments sont une chaîne JSON à décoder
+            else if (isset($toolCall['function']['arguments']) && is_string($toolCall['function']['arguments'])) {
+                $args = json_decode($toolCall['function']['arguments'], true);
+                if (isset($args['title']) && isset($args['content'])) {
+                    $title = $args['title'];
+                    $content = $args['content'];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// Si toujours pas trouvé, essayer avec tool_with_tool_call_list (autre structure de Vapi.ai)
+if ((!$title || !$content) && isset($requestData['message']) && isset($requestData['message']['tool_with_tool_call_list']) && is_array($requestData['message']['tool_with_tool_call_list'])) {
+    foreach ($requestData['message']['tool_with_tool_call_list'] as $toolWithCall) {
+        if (isset($toolWithCall['tool_call']) && isset($toolWithCall['tool_call']['function'])) {
+            // Vérifier si les arguments sont directement accessibles comme un tableau
+            if (isset($toolWithCall['tool_call']['function']['arguments']) && is_array($toolWithCall['tool_call']['function']['arguments'])) {
+                if (isset($toolWithCall['tool_call']['function']['arguments']['title']) && isset($toolWithCall['tool_call']['function']['arguments']['content'])) {
+                    $title = $toolWithCall['tool_call']['function']['arguments']['title'];
+                    $content = $toolWithCall['tool_call']['function']['arguments']['content'];
+                    break;
+                }
+            }
+            // Vérifier si les arguments sont une chaîne JSON à décoder
+            else if (isset($toolWithCall['tool_call']['function']['arguments']) && is_string($toolWithCall['tool_call']['function']['arguments'])) {
+                $args = json_decode($toolWithCall['tool_call']['function']['arguments'], true);
                 if (isset($args['title']) && isset($args['content'])) {
                     $title = $args['title'];
                     $content = $args['content'];
