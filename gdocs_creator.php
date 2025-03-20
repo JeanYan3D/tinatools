@@ -107,8 +107,43 @@ $requestData = json_decode(file_get_contents('php://input'), true);
 // Pour le débogage, loguer la requête entrante
 logRequest($requestData, null);
 
+// Traiter différents formats de requête
+$title = null;
+$content = null;
+
+// Format direct : {"title": "...", "content": "..."}
+if (isset($requestData['title']) && isset($requestData['content'])) {
+    $title = $requestData['title'];
+    $content = $requestData['content'];
+} 
+// Format Vapi.ai : {"message": {"tool_calls": [{"function": {"arguments": {"title": "...", "content": "..."}}}]}}
+else if (isset($requestData['message']) && isset($requestData['message']['tool_calls'])) {
+    // Parcourir les tool_calls pour trouver CreateGoogleDoc
+    foreach ($requestData['message']['tool_calls'] as $toolCall) {
+        if (isset($toolCall['function']) && isset($toolCall['function']['arguments'])) {
+            // Si c'est un objet JSON sous forme de chaîne
+            if (is_string($toolCall['function']['arguments'])) {
+                $args = json_decode($toolCall['function']['arguments'], true);
+                if (isset($args['title']) && isset($args['content'])) {
+                    $title = $args['title'];
+                    $content = $args['content'];
+                    break;
+                }
+            } 
+            // Si c'est déjà un objet
+            else if (is_array($toolCall['function']['arguments'])) {
+                if (isset($toolCall['function']['arguments']['title']) && isset($toolCall['function']['arguments']['content'])) {
+                    $title = $toolCall['function']['arguments']['title'];
+                    $content = $toolCall['function']['arguments']['content'];
+                    break;
+                }
+            }
+        }
+    }
+}
+
 // Vérifier que les données nécessaires sont présentes
-if (!isset($requestData['title']) || !isset($requestData['content'])) {
+if (!$title || !$content) {
     $response = [
         'success' => false,
         'message' => 'Erreur: Titre et contenu requis'
@@ -126,7 +161,7 @@ try {
     
     // Créer un nouveau document
     $document = new Google\Service\Docs\Document([
-        'title' => $requestData['title']
+        'title' => $title
     ]);
     
     $document = $service->documents->create($document);
@@ -139,7 +174,7 @@ try {
                 'location' => [
                     'index' => 1
                 ],
-                'text' => $requestData['content']
+                'text' => $content
             ]
         ])
     ];
