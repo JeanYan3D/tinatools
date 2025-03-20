@@ -107,13 +107,42 @@ $requestData = json_decode(file_get_contents('php://input'), true);
 // Pour le débogage, loguer la requête entrante
 logRequest($requestData, null);
 
-// Utiliser des valeurs par défaut pour le titre et le contenu
-$title = "Document test créé le " . date('Y-m-d H:i:s');
+// Essayer d'extraire le titre de la requête
+$title = null;
 $content = "Ceci est un document test créé automatiquement pour vérifier l'intégration entre Vapi.ai et Google Docs.";
 
+// Format direct : {"title": "...", "content": "..."}
+if (isset($requestData['title'])) {
+    $title = $requestData['title'];
+} 
+// Format Vapi.ai complet
+else if (isset($requestData['message']) && isset($requestData['message']['tool_calls']) && is_array($requestData['message']['tool_calls'])) {
+    foreach ($requestData['message']['tool_calls'] as $toolCall) {
+        if (isset($toolCall['function'])) {
+            // Vérifier si les arguments sont directement accessibles comme un tableau
+            if (isset($toolCall['function']['arguments']) && is_array($toolCall['function']['arguments']) && isset($toolCall['function']['arguments']['title'])) {
+                $title = $toolCall['function']['arguments']['title'];
+                break;
+            }
+            // Vérifier si les arguments sont une chaîne JSON à décoder
+            else if (isset($toolCall['function']['arguments']) && is_string($toolCall['function']['arguments'])) {
+                $args = json_decode($toolCall['function']['arguments'], true);
+                if (isset($args['title'])) {
+                    $title = $args['title'];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// Si aucun titre n'a été trouvé, utiliser un titre par défaut
+if (!$title) {
+    $title = "Document test créé le " . date('Y-m-d H:i:s');
+}
+
 // Journaliser les valeurs pour le débogage
-file_put_contents($log_file, "Utilisation de valeurs par défaut pour simplifier les tests\n", FILE_APPEND);
-file_put_contents($log_file, "Titre par défaut: " . $title . "\n", FILE_APPEND);
+file_put_contents($log_file, "Titre extrait ou par défaut: " . $title . "\n", FILE_APPEND);
 file_put_contents($log_file, "Contenu par défaut: " . $content . "\n", FILE_APPEND);
 file_put_contents($log_file, "Structure de la requête originale: " . print_r($requestData, true) . "\n", FILE_APPEND);
 
@@ -194,12 +223,8 @@ try {
     // Gérer les erreurs
     $response = [
         'success' => false,
-        'message' => 'Erreur: ' . $e->getMessage(),
-        'error_details' => $e->getTraceAsString()
+        'message' => 'Erreur: ' . $e->getMessage()
     ];
-    
-    // Afficher l'erreur dans la console du navigateur pour faciliter le débogage
-    error_log('Erreur Google Docs API: ' . $e->getMessage());
     
     logRequest($requestData, $response);
     echo json_encode($response);
