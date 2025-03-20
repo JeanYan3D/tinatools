@@ -116,12 +116,11 @@ if (isset($requestData['title']) && isset($requestData['content'])) {
     $title = $requestData['title'];
     $content = $requestData['content'];
 } 
-// Format Vapi.ai : {"message": {"tool_calls": [{"function": {"arguments": {...}}}]}}
+// Format Vapi.ai complet
 else if (isset($requestData['message']) && isset($requestData['message']['tool_calls']) && is_array($requestData['message']['tool_calls'])) {
     foreach ($requestData['message']['tool_calls'] as $toolCall) {
-        // Vérifier la structure du tool call
         if (isset($toolCall['function'])) {
-            // Cas 1: arguments est un objet JSON déjà décodé
+            // Vérifier si les arguments sont directement accessibles comme un tableau
             if (isset($toolCall['function']['arguments']) && is_array($toolCall['function']['arguments'])) {
                 if (isset($toolCall['function']['arguments']['title']) && isset($toolCall['function']['arguments']['content'])) {
                     $title = $toolCall['function']['arguments']['title'];
@@ -129,7 +128,7 @@ else if (isset($requestData['message']) && isset($requestData['message']['tool_c
                     break;
                 }
             }
-            // Cas 2: arguments est une chaîne JSON à décoder
+            // Vérifier si les arguments sont une chaîne JSON à décoder
             else if (isset($toolCall['function']['arguments']) && is_string($toolCall['function']['arguments'])) {
                 $args = json_decode($toolCall['function']['arguments'], true);
                 if (isset($args['title']) && isset($args['content'])) {
@@ -145,6 +144,7 @@ else if (isset($requestData['message']) && isset($requestData['message']['tool_c
 // Journaliser les valeurs extraites pour le débogage
 file_put_contents($log_file, "Titre extrait: " . ($title ?? "non trouvé") . "\n", FILE_APPEND);
 file_put_contents($log_file, "Contenu extrait: " . ($content ?? "non trouvé") . "\n", FILE_APPEND);
+file_put_contents($log_file, "Structure de la requête: " . print_r($requestData, true) . "\n", FILE_APPEND);
 
 // Vérifier que les données nécessaires sont présentes
 if (!$title || !$content) {
