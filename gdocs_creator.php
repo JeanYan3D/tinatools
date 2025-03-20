@@ -45,9 +45,28 @@ function getClient() {
         \Google\Service\Drive::DRIVE_FILE // Ajout du scope Drive pour les permissions
     ]);
     
-    // Utiliser le fichier JSON du compte de service
-    // Assurez-vous que le nom du fichier correspond à celui que vous avez téléchargé
-    $client->setAuthConfig(__DIR__ . '/tina-gdocs-service.json');
+    // Vérifier si nous sommes sur Heroku (variable d'environnement présente)
+    if (getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')) {
+        // Utiliser la variable d'environnement
+        $credentials_json = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON');
+        
+        // Créer un fichier temporaire avec les informations d'identification
+        $temp_file = tempnam(sys_get_temp_dir(), 'google_credentials');
+        file_put_contents($temp_file, $credentials_json);
+        
+        // Utiliser ce fichier temporaire pour l'authentification
+        $client->setAuthConfig($temp_file);
+        
+        // Supprimer le fichier temporaire après utilisation
+        register_shutdown_function(function() use ($temp_file) {
+            if (file_exists($temp_file)) {
+                unlink($temp_file);
+            }
+        });
+    } else {
+        // Utiliser le fichier JSON du compte de service (pour le développement local)
+        $client->setAuthConfig(__DIR__ . '/tina-gdocs-service.json');
+    }
     
     return $client;
 }
