@@ -47,16 +47,32 @@ $content = null;
 
 // Extraire l'ID de l'appel d'outil (toolCallId) s'il existe
 $toolCallId = null;
+$debugInfo = [];
+
+// Enregistrer la structure complète de la requête pour le débogage
+$debugInfo['request_structure'] = json_encode($requestData);
+
 if (isset($requestData['message']['tool_calls'][0]['id'])) {
     $toolCallId = $requestData['message']['tool_calls'][0]['id'];
+    $debugInfo['extraction_method'] = 'message.tool_calls[0].id';
 } elseif (isset($requestData['message']['tool_call_list'][0]['id'])) {
     $toolCallId = $requestData['message']['tool_call_list'][0]['id'];
+    $debugInfo['extraction_method'] = 'message.tool_call_list[0].id';
 } elseif (isset($requestData['message']['tool_with_tool_call_list'][0]['tool_call']['id'])) {
     $toolCallId = $requestData['message']['tool_with_tool_call_list'][0]['tool_call']['id'];
+    $debugInfo['extraction_method'] = 'message.tool_with_tool_call_list[0].tool_call.id';
 } elseif (isset($requestData['id'])) {
     // Format direct
     $toolCallId = $requestData['id'];
+    $debugInfo['extraction_method'] = 'id';
+} else {
+    $debugInfo['extraction_method'] = 'none';
+    $debugInfo['extraction_failed'] = true;
 }
+
+// Enregistrer les informations de débogage
+$debugInfo['extracted_id'] = $toolCallId;
+file_put_contents('debug_extraction.log', date('Y-m-d H:i:s') . ' - ' . json_encode($debugInfo) . "\n", FILE_APPEND);
 
 // Enregistrer l'ID de l'appel d'outil
 $log_file = 'gdocs_creator.log';
