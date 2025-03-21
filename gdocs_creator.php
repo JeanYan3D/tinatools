@@ -41,6 +41,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $rawData = file_get_contents('php://input');
 $requestData = json_decode($rawData, true);
 
+// Créer un dossier de logs s'il n'existe pas
+$log_dir = __DIR__ . '/logs';
+if (!is_dir($log_dir)) {
+    mkdir($log_dir, 0777, true);
+}
+
+// Créer un nom de fichier unique basé sur la date et l'heure
+$timestamp = date('Y-m-d_H-i-s');
+$request_log_file = $log_dir . '/vapi_request_' . $timestamp . '.json';
+
+// Enregistrer la requête brute complète
+file_put_contents($request_log_file, $rawData);
+
 // Initialiser les variables pour le titre et le contenu
 $title = null;
 $content = null;
