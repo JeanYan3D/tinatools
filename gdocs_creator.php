@@ -167,9 +167,7 @@ try {
     // Répondre avec succès
     $response = [
         'success' => true,
-        'message' => 'Document créé avec succès',
-        'documentId' => $documentId,
-        'documentUrl' => "https://docs.google.com/document/d/{$documentId}/edit"
+        'message' => 'Document créé avec succès'
     ];
     
     logRequest($requestData, $response);
