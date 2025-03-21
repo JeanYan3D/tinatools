@@ -113,6 +113,7 @@ if (!$title || !$content) {
     $response = [
         'results' => [
             [
+                'toolCallId' => $toolCallId,
                 'tool_call_id' => $toolCallId,
                 'result' => 'Erreur: Titre et contenu requis'
             ]
@@ -191,6 +192,7 @@ try {
     $response = [
         'results' => [
             [
+                'toolCallId' => $toolCallId,
                 'tool_call_id' => $toolCallId,
                 'result' => 'Document créé avec succès: ' . $title
             ]
@@ -204,6 +206,7 @@ try {
     $response = [
         'results' => [
             [
+                'toolCallId' => $toolCallId,
                 'tool_call_id' => $toolCallId,
                 'result' => 'Erreur: ' . $e->getMessage()
             ]
