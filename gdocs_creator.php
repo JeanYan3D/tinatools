@@ -65,7 +65,10 @@ $debugInfo = [];
 // Enregistrer la structure complète de la requête pour le débogage
 $debugInfo['request_structure'] = json_encode($requestData);
 
-if (isset($requestData['message']['tool_calls'][0]['id'])) {
+if (isset($requestData['message']['toolCalls'][0]['id'])) {
+    $toolCallId = $requestData['message']['toolCalls'][0]['id'];
+    $debugInfo['extraction_method'] = 'message.toolCalls[0].id';
+} elseif (isset($requestData['message']['tool_calls'][0]['id'])) {
     $toolCallId = $requestData['message']['tool_calls'][0]['id'];
     $debugInfo['extraction_method'] = 'message.tool_calls[0].id';
 } elseif (isset($requestData['message']['tool_call_list'][0]['id'])) {
