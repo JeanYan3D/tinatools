@@ -93,12 +93,7 @@ if (!$title || !$content) {
 if (!$title || !$content) {
     $response = [
         'success' => false,
-        'message' => 'Erreur: Titre et contenu requis',
-        'debug_info' => [
-            'raw_data' => substr($rawData, 0, 1000),
-            'title_extracted' => $title,
-            'content_extracted' => $content
-        ]
+        'message' => 'Erreur: Titre et contenu requis'
     ];
     
     logRequest($requestData, $response);
@@ -174,11 +169,7 @@ try {
         'success' => true,
         'message' => 'Document créé avec succès',
         'documentId' => $documentId,
-        'documentUrl' => "https://docs.google.com/document/d/{$documentId}/edit",
-        'debug_info' => [
-            'title_used' => $title,
-            'content_used' => $content
-        ]
+        'documentUrl' => "https://docs.google.com/document/d/{$documentId}/edit"
     ];
     
     logRequest($requestData, $response);
@@ -187,12 +178,7 @@ try {
     // Gérer les erreurs
     $response = [
         'success' => false,
-        'message' => 'Erreur: ' . $e->getMessage(),
-        'debug_info' => [
-            'raw_data' => substr($rawData, 0, 1000), // Limiter à 1000 caractères pour éviter des logs trop volumineux
-            'title_extracted' => $title,
-            'content_extracted' => $content
-        ]
+        'message' => 'Erreur: ' . $e->getMessage()
     ];
     
     logRequest($requestData, $response);
