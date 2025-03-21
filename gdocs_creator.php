@@ -11,6 +11,9 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+// Inclure l'autoloader de Composer
+require_once __DIR__ . '/vendor/autoload.php';
+
 // Fichier de log
 $log_file = __DIR__ . '/gdocs_creator.log';
 
@@ -86,12 +89,21 @@ if (!$title || !$content) {
     file_put_contents($log_file, "Contenu extrait (récursif): " . ($content ?? "non trouvé") . "\n", FILE_APPEND);
 }
 
-// Si toujours pas trouvé, utiliser des valeurs par défaut
+// Vérifier que les paramètres nécessaires sont présents
 if (!$title || !$content) {
-    $title = "Document test créé le " . date('Y-m-d H:i:s');
-    $content = "Ceci est un document test créé automatiquement pour vérifier l'intégration entre Vapi.ai et Google Docs.";
+    $response = [
+        'success' => false,
+        'message' => 'Erreur: Titre et contenu requis',
+        'debug_info' => [
+            'raw_data' => substr($rawData, 0, 1000),
+            'title_extracted' => $title,
+            'content_extracted' => $content
+        ]
+    ];
     
-    file_put_contents($log_file, "Utilisation de valeurs par défaut\n", FILE_APPEND);
+    logRequest($requestData, $response);
+    echo json_encode($response);
+    exit;
 }
 
 try {
@@ -130,27 +142,27 @@ try {
         // Créer un service Drive
         $driveService = new Google\Service\Drive($client);
         
-        // Créer une permission pour l'email spécifié (propriétaire)
-        $ownerPermission = new Google\Service\Drive\Permission([
+        // Créer une permission pour l'email spécifié
+        $userPermission = new Google\Service\Drive\Permission([
             'type' => 'user',
             'role' => 'writer',
             'emailAddress' => 'tehau.babois@gmail.com'
         ]);
         
         // Appliquer la permission au document
-        $driveService->permissions->create($documentId, $ownerPermission, [
+        $driveService->permissions->create($documentId, $userPermission, [
             'sendNotificationEmail' => false
         ]);
         
-        // Créer également une permission pour que le document soit accessible via le lien
-        $anyonePermission = new Google\Service\Drive\Permission([
+        // Créer une permission publique pour que le document soit accessible à tous
+        $publicPermission = new Google\Service\Drive\Permission([
             'type' => 'anyone',
-            'role' => 'reader',
-            'allowFileDiscovery' => false
+            'role' => 'writer', // Donner des droits d'écriture à tous
+            'allowFileDiscovery' => true
         ]);
         
-        // Appliquer la permission au document
-        $driveService->permissions->create($documentId, $anyonePermission);
+        // Appliquer la permission publique au document
+        $driveService->permissions->create($documentId, $publicPermission);
         
     } catch (Exception $e) {
         // Si le partage échoue, on continue quand même (le document est créé)
@@ -189,9 +201,15 @@ try {
 
 // Fonction pour obtenir un client Google authentifié
 function getClient() {
-    $client = new Google_Client();
+    $client = new Google\Client();
     $client->setApplicationName('Tina Google Docs Integration');
-    $client->setScopes(Google_Service_Docs::DOCUMENTS);
+    
+    // Ajouter tous les scopes nécessaires, y compris DRIVE pour les permissions
+    $client->setScopes([
+        Google\Service\Docs::DOCUMENTS,
+        Google\Service\Drive::DRIVE,
+        Google\Service\Drive::DRIVE_FILE
+    ]);
     
     // Vérifier si nous sommes sur Heroku (variable d'environnement définie)
     if (getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')) {
