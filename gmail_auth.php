@@ -27,11 +27,28 @@ $client->setScopes([
     Google\Service\Drive::DRIVE_FILE
 ]);
 
+// Vérifier si nous sommes sur Heroku
+$isHeroku = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON') ? true : false;
+
 // Configurer les identifiants OAuth
-$client->setAuthConfig('client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
+if ($isHeroku) {
+    // Sur Heroku, utiliser la variable d'environnement
+    $credentials_json = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON');
+    $credentials = json_decode($credentials_json, true);
+    $client->setAuthConfig($credentials);
+} else {
+    // En local, utiliser le fichier de clé OAuth
+    $client->setAuthConfig('client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
+}
 
 // Définir l'URL de redirection après authentification
-$redirect_uri = 'http://localhost/tinatools/oauth_callback.php';
+if ($isHeroku) {
+    // Sur Heroku, utiliser l'URL de l'application Heroku
+    $redirect_uri = 'https://tinatools-gdocs-8657da134f64.herokuapp.com/oauth_callback.php';
+} else {
+    // En local, utiliser localhost
+    $redirect_uri = 'http://localhost/tinatools/oauth_callback.php';
+}
 $client->setRedirectUri($redirect_uri);
 
 // Définir le type d'accès et l'état de l'authentification
