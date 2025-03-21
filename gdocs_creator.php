@@ -37,17 +37,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-// Récupérer les données brutes
+// Extraire les données de la requête
 $rawData = file_get_contents('php://input');
 $requestData = json_decode($rawData, true);
+
+// Initialiser les variables pour le titre et le contenu
+$title = null;
+$content = null;
+
+// Extraire l'ID de l'appel d'outil (toolCallId) s'il existe
+$toolCallId = null;
+if (isset($requestData['message']['tool_calls'][0]['id'])) {
+    $toolCallId = $requestData['message']['tool_calls'][0]['id'];
+} elseif (isset($requestData['message']['tool_call_list'][0]['id'])) {
+    $toolCallId = $requestData['message']['tool_call_list'][0]['id'];
+} elseif (isset($requestData['message']['tool_with_tool_call_list'][0]['tool_call']['id'])) {
+    $toolCallId = $requestData['message']['tool_with_tool_call_list'][0]['tool_call']['id'];
+} elseif (isset($requestData['id'])) {
+    // Format direct
+    $toolCallId = $requestData['id'];
+}
+
+// Enregistrer l'ID de l'appel d'outil
+$log_file = 'gdocs_creator.log';
+file_put_contents($log_file, date('Y-m-d H:i:s') . " - Requête reçue\n", FILE_APPEND);
+file_put_contents($log_file, "Tool Call ID: " . ($toolCallId ?? "non trouvé") . "\n", FILE_APPEND);
 
 // Pour le débogage, loguer la requête entrante
 logRequest($requestData, null);
 
 // Version ultra simplifiée pour extraire le titre et le contenu
-$title = null;
-$content = null;
-
 // Essayer d'extraire directement depuis le JSON brut avec une expression régulière
 if (preg_match('/"title":\s*"([^"]+)"/', $rawData, $titleMatches) && 
     preg_match('/"content":\s*"([^"]+)"/', $rawData, $contentMatches)) {
@@ -92,8 +111,12 @@ if (!$title || !$content) {
 // Vérifier que les paramètres nécessaires sont présents
 if (!$title || !$content) {
     $response = [
-        'success' => false,
-        'message' => 'Erreur: Titre et contenu requis'
+        'results' => [
+            [
+                'toolCallId' => $toolCallId,
+                'result' => 'Erreur: Titre et contenu requis'
+            ]
+        ]
     ];
     
     logRequest($requestData, $response);
@@ -164,19 +187,27 @@ try {
         error_log('Erreur lors du partage du document: ' . $e->getMessage());
     }
     
-    // Répondre avec succès
+    // Répondre avec succès dans le format attendu par Vapi.ai
     $response = [
-        'success' => true,
-        'message' => 'Document créé avec succès'
+        'results' => [
+            [
+                'toolCallId' => $toolCallId,
+                'result' => 'Document créé avec succès: ' . $title
+            ]
+        ]
     ];
     
     logRequest($requestData, $response);
     echo json_encode($response);
 } catch (Exception $e) {
-    // Gérer les erreurs
+    // Gérer les erreurs dans le format attendu par Vapi.ai
     $response = [
-        'success' => false,
-        'message' => 'Erreur: ' . $e->getMessage()
+        'results' => [
+            [
+                'toolCallId' => $toolCallId,
+                'result' => 'Erreur: ' . $e->getMessage()
+            ]
+        ]
     ];
     
     logRequest($requestData, $response);
