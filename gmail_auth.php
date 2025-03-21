@@ -44,7 +44,7 @@ if ($isHeroku) {
 // Définir l'URL de redirection après authentification
 if ($isHeroku) {
     // Sur Heroku, utiliser l'URL de l'application Heroku
-    $redirect_uri = 'https://tinatools-gdocs-8657da134f64.herokuapp.com/oauth_callback.php';
+    $redirect_uri = 'https://tinatools-gdocs-8657da134f6d.herokuapp.com/oauth_callback.php';
 } else {
     // En local, utiliser localhost
     $redirect_uri = 'http://localhost/tinatools/oauth_callback.php';
