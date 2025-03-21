@@ -46,70 +46,59 @@ function getGmailClient() {
     ]);
     
     // Vérifier si nous sommes sur Heroku (variable d'environnement définie)
-    $isHeroku = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON') ? true : false;
+    $isHeroku = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON') ? true : false;
     
     // Configuration des identifiants OAuth
     if ($isHeroku) {
-        // Sur Heroku, utiliser la variable d'environnement
-        $credentials_json = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON');
+        // Sur Heroku, utiliser la variable d'environnement pour les identifiants OAuth
+        $credentials_json = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON');
         $credentials = json_decode($credentials_json, true);
         $client->setAuthConfig($credentials);
-    } else {
-        // En local, utiliser le fichier de clé OAuth
-        $client->setAuthConfig('client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
-    }
-    
-    // Gestion du token d'accès
-    if ($isHeroku) {
-        // Sur Heroku, utiliser la variable d'environnement GMAIL_TOKEN_JSON
-        if (getenv('GMAIL_TOKEN_JSON')) {
-            $accessToken = json_decode(getenv('GMAIL_TOKEN_JSON'), true);
-            $client->setAccessToken($accessToken);
-            
-            // Rafraîchir le token s'il est expiré
-            if ($client->isAccessTokenExpired()) {
-                if ($client->getRefreshToken()) {
-                    $client->fetchAccessTokenWithRefreshToken($client->getRefreshToken());
-                    
-                    // Note: Sur Heroku, nous ne pouvons pas mettre à jour automatiquement 
-                    // la variable d'environnement. Un message de log sera ajouté pour 
-                    // indiquer qu'une mise à jour manuelle est nécessaire.
-                    error_log('ATTENTION: Le token Gmail a été rafraîchi. Vous devez mettre à jour manuellement la variable d\'environnement GMAIL_TOKEN_JSON sur Heroku avec le nouveau token.');
-                    error_log('Nouveau token: ' . json_encode($client->getAccessToken()));
-                } else {
-                    // Erreur critique - pas de refresh token
-                    error_log('ERREUR: Pas de refresh token disponible pour Gmail. Réauthentification nécessaire.');
-                    
-                    // En production, nous ne pouvons pas rediriger vers l'authentification
-                    // car cela perturberait l'API. Nous retournons une erreur à la place.
-                    throw new Exception('Authentification Gmail expirée. Veuillez réauthentifier l\'application.');
-                }
-            }
-        } else {
-            // Pas de token disponible sur Heroku
-            error_log('ERREUR: Variable d\'environnement GMAIL_TOKEN_JSON non définie sur Heroku.');
-            throw new Exception('Configuration Gmail incomplète. Variable d\'environnement GMAIL_TOKEN_JSON manquante.');
+        
+        // Définir l'URL de redirection pour Heroku
+        $redirect_uri = 'https://tinatools-gdocs-8657da134f6d.herokuapp.com/oauth_callback.php';
+        $client->setRedirectUri($redirect_uri);
+        
+        // Récupérer le token depuis la variable d'environnement
+        $token_json = getenv('GMAIL_TOKEN_JSON');
+        if ($token_json) {
+            $token = json_decode($token_json, true);
+            $client->setAccessToken($token);
         }
     } else {
-        // En local, utiliser le fichier
-        $tokenPath = __DIR__ . '/gmail_token.json';
-        if (file_exists($tokenPath)) {
-            $accessToken = json_decode(file_get_contents($tokenPath), true);
-            $client->setAccessToken($accessToken);
+        // En local, utiliser les fichiers
+        $client->setAuthConfig('client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
+        $redirect_uri = 'http://localhost/tinatools/oauth_callback.php';
+        $client->setRedirectUri($redirect_uri);
+        
+        // Charger le token depuis le fichier local
+        if (file_exists('gmail_token.json')) {
+            $token_json = file_get_contents('gmail_token.json');
+            $token = json_decode($token_json, true);
+            $client->setAccessToken($token);
+        }
+    }
+    
+    // Vérifier si le token est expiré
+    if ($client->isAccessTokenExpired()) {
+        // Si nous avons un refresh token, on l'utilise pour obtenir un nouveau token
+        if ($client->getRefreshToken()) {
+            $client->fetchAccessTokenWithRefreshToken($client->getRefreshToken());
             
-            // Rafraîchir le token s'il est expiré
-            if ($client->isAccessTokenExpired()) {
-                if ($client->getRefreshToken()) {
-                    $client->fetchAccessTokenWithRefreshToken($client->getRefreshToken());
-                    file_put_contents($tokenPath, json_encode($client->getAccessToken()));
-                } else {
-                    // Si pas de refresh token, rediriger vers l'authentification
-                    header('Location: gmail_auth.php');
-                    exit;
-                }
+            // Sauvegarder le nouveau token
+            if ($isHeroku) {
+                // Sur Heroku, on ne peut pas sauvegarder directement, on affiche un message
+                echo '<div class="warning">
+                    <h2>Token expiré</h2>
+                    <p>Le token d\'accès a expiré et a été renouvelé. Vous devez mettre à jour la variable d\'environnement GMAIL_TOKEN_JSON sur Heroku avec le nouveau token :</p>
+                    <pre>' . json_encode($client->getAccessToken()) . '</pre>
+                </div>';
+            } else {
+                // En local, on sauvegarde dans le fichier
+                file_put_contents('gmail_token.json', json_encode($client->getAccessToken()));
             }
         } else {
-            // Si pas de token, rediriger vers l'authentification
+            // Si nous n'avons pas de refresh token, on redirige vers l'authentification
             header('Location: gmail_auth.php');
             exit;
         }
@@ -127,67 +116,67 @@ function getGmailClient() {
  */
 function searchEmails($query, $maxResults = 10) {
     try {
-        // Obtenir un client Gmail authentifié
+        // Obtenir un client authentifié
         $client = getGmailClient();
+        
+        // Créer le service Gmail
         $service = new Google\Service\Gmail($client);
         
-        // Rechercher les emails correspondant à la requête
-        $optParams = [
+        // Paramètres de la requête
+        $opt_params = [
             'maxResults' => $maxResults,
             'q' => $query
         ];
         
-        $results = $service->users_messages->listUsersMessages('me', $optParams);
-        $messages = $results->getMessages();
+        // Exécuter la recherche
+        $results = $service->users_messages->listUsersMessages('me', $opt_params);
         
+        // Tableau pour stocker les résultats formatés
         $emails = [];
         
-        // Récupérer les détails de chaque message
-        foreach ($messages as $message) {
-            $msg = $service->users_messages->get('me', $message->getId(), ['format' => 'metadata']);
-            
-            $headers = $msg->getPayload()->getHeaders();
-            $email = [
-                'id' => $message->getId(),
-                'threadId' => $message->getThreadId(),
-                'snippet' => $msg->getSnippet(),
-                'date' => '',
-                'from' => '',
-                'to' => '',
-                'subject' => ''
-            ];
-            
-            // Extraire les en-têtes importants
-            foreach ($headers as $header) {
-                switch ($header->getName()) {
-                    case 'Date':
+        // Si des messages ont été trouvés
+        if (count($results->getMessages()) > 0) {
+            foreach ($results->getMessages() as $message) {
+                // Récupérer les détails du message
+                $msg = $service->users_messages->get('me', $message->getId(), ['format' => 'metadata']);
+                
+                // Extraire les en-têtes importants
+                $headers = $msg->getPayload()->getHeaders();
+                $email = [
+                    'id' => $message->getId(),
+                    'threadId' => $message->getThreadId(),
+                    'snippet' => $msg->getSnippet(),
+                    'date' => '',
+                    'from' => '',
+                    'to' => '',
+                    'subject' => ''
+                ];
+                
+                // Parcourir les en-têtes pour extraire les informations
+                foreach ($headers as $header) {
+                    if ($header->getName() == 'Date') {
                         $email['date'] = $header->getValue();
-                        break;
-                    case 'From':
+                    } elseif ($header->getName() == 'From') {
                         $email['from'] = $header->getValue();
-                        break;
-                    case 'To':
+                    } elseif ($header->getName() == 'To') {
                         $email['to'] = $header->getValue();
-                        break;
-                    case 'Subject':
+                    } elseif ($header->getName() == 'Subject') {
                         $email['subject'] = $header->getValue();
-                        break;
+                    }
                 }
+                
+                $emails[] = $email;
             }
-            
-            $emails[] = $email;
         }
         
-        return [
-            'success' => true,
-            'count' => count($emails),
-            'emails' => $emails
-        ];
+        // Logger la requête et la réponse
+        logGmailRequest($query, $emails);
+        
+        return $emails;
     } catch (Exception $e) {
-        return [
-            'success' => false,
-            'error' => $e->getMessage()
-        ];
+        // En cas d'erreur, logger et retourner un tableau vide
+        logGmailRequest($query, 'Erreur: ' . $e->getMessage());
+        return ['error' => $e->getMessage()];
     }
 }
 
@@ -199,92 +188,119 @@ function searchEmails($query, $maxResults = 10) {
  */
 function readEmail($emailId) {
     try {
-        // Obtenir un client Gmail authentifié
+        // Obtenir un client authentifié
         $client = getGmailClient();
+        
+        // Créer le service Gmail
         $service = new Google\Service\Gmail($client);
         
         // Récupérer le message complet
         $message = $service->users_messages->get('me', $emailId, ['format' => 'full']);
         
+        // Extraire les en-têtes
         $headers = $message->getPayload()->getHeaders();
         $email = [
             'id' => $message->getId(),
             'threadId' => $message->getThreadId(),
+            'labelIds' => $message->getLabelIds(),
             'snippet' => $message->getSnippet(),
+            'historyId' => $message->getHistoryId(),
+            'internalDate' => $message->getInternalDate(),
             'date' => '',
             'from' => '',
             'to' => '',
+            'cc' => '',
+            'bcc' => '',
             'subject' => '',
-            'body' => ''
+            'body' => [
+                'plain' => '',
+                'html' => ''
+            ],
+            'attachments' => []
         ];
         
-        // Extraire les en-têtes importants
+        // Parcourir les en-têtes pour extraire les informations
         foreach ($headers as $header) {
-            switch ($header->getName()) {
-                case 'Date':
-                    $email['date'] = $header->getValue();
-                    break;
-                case 'From':
-                    $email['from'] = $header->getValue();
-                    break;
-                case 'To':
-                    $email['to'] = $header->getValue();
-                    break;
-                case 'Subject':
-                    $email['subject'] = $header->getValue();
-                    break;
+            if ($header->getName() == 'Date') {
+                $email['date'] = $header->getValue();
+            } elseif ($header->getName() == 'From') {
+                $email['from'] = $header->getValue();
+            } elseif ($header->getName() == 'To') {
+                $email['to'] = $header->getValue();
+            } elseif ($header->getName() == 'Cc') {
+                $email['cc'] = $header->getValue();
+            } elseif ($header->getName() == 'Bcc') {
+                $email['bcc'] = $header->getValue();
+            } elseif ($header->getName() == 'Subject') {
+                $email['subject'] = $header->getValue();
             }
         }
         
-        // Extraire le corps du message
-        $parts = $message->getPayload()->getParts();
-        $body = '';
-        
-        // Fonction récursive pour extraire le texte des parties du message
-        function getMessageBody($part) {
-            $body = '';
+        // Fonction récursive pour extraire le corps du message et les pièces jointes
+        function processMessageParts($part, &$email) {
+            $mimeType = $part->getMimeType();
             
-            // Si c'est une partie simple
-            if ($part->getBody() && $part->getBody()->getData()) {
-                if ($part->getMimeType() === 'text/plain') {
-                    $body = base64_decode(str_replace(['-', '_'], ['+', '/'], $part->getBody()->getData()));
-                }
-            }
-            
-            // Si c'est une partie multipart, parcourir les sous-parties
             if ($part->getParts()) {
+                // Si la partie a des sous-parties, les traiter récursivement
                 foreach ($part->getParts() as $subpart) {
-                    $body .= getMessageBody($subpart);
+                    processMessageParts($subpart, $email);
+                }
+            } else {
+                // Si c'est une partie finale, extraire le contenu
+                $body = $part->getBody();
+                $data = $body->getData();
+                
+                if ($data) {
+                    // Décoder les données
+                    $decodedData = base64_decode(str_replace(['-', '_'], ['+', '/'], $data));
+                    
+                    if ($mimeType == 'text/plain') {
+                        $email['body']['plain'] = $decodedData;
+                    } elseif ($mimeType == 'text/html') {
+                        $email['body']['html'] = $decodedData;
+                    } elseif ($body->getAttachmentId()) {
+                        // C'est une pièce jointe
+                        $email['attachments'][] = [
+                            'id' => $body->getAttachmentId(),
+                            'filename' => $part->getFilename(),
+                            'mimeType' => $mimeType,
+                            'size' => $body->getSize()
+                        ];
+                    }
                 }
             }
-            
-            return $body;
         }
         
-        // Si le message a des parties
-        if ($parts) {
-            foreach ($parts as $part) {
-                $body .= getMessageBody($part);
+        // Traiter les parties du message
+        if ($message->getPayload()->getParts()) {
+            foreach ($message->getPayload()->getParts() as $part) {
+                processMessageParts($part, $email);
             }
         } else {
-            // Sinon, essayer d'extraire directement du payload
-            $data = $message->getPayload()->getBody()->getData();
+            // Si le message n'a pas de parties, traiter directement le corps
+            $body = $message->getPayload()->getBody();
+            $data = $body->getData();
+            
             if ($data) {
-                $body = base64_decode(str_replace(['-', '_'], ['+', '/'], $data));
+                $decodedData = base64_decode(str_replace(['-', '_'], ['+', '/'], $data));
+                $mimeType = $message->getPayload()->getMimeType();
+                
+                if ($mimeType == 'text/plain') {
+                    $email['body']['plain'] = $decodedData;
+                } elseif ($mimeType == 'text/html') {
+                    $email['body']['html'] = $decodedData;
+                }
             }
         }
         
-        $email['body'] = $body;
+        // Logger la requête et la réponse
+        logGmailRequest('readEmail: ' . $emailId, $email);
         
-        return [
-            'success' => true,
-            'email' => $email
-        ];
+        return $email;
     } catch (Exception $e) {
-        return [
-            'success' => false,
-            'error' => $e->getMessage()
-        ];
+        // En cas d'erreur, logger et retourner un tableau avec l'erreur
+        logGmailRequest('readEmail: ' . $emailId, 'Erreur: ' . $e->getMessage());
+        return ['error' => $e->getMessage()];
     }
 }
 
@@ -300,43 +316,51 @@ function readEmail($emailId) {
  */
 function createDraft($to, $subject, $body, $cc = '', $bcc = '') {
     try {
-        // Obtenir un client Gmail authentifié
+        // Obtenir un client authentifié
         $client = getGmailClient();
+        
+        // Créer le service Gmail
         $service = new Google\Service\Gmail($client);
         
-        // Construire l'email au format RFC 2822
-        $email = "From: me\r\n";
-        $email .= "To: $to\r\n";
-        
-        if (!empty($cc)) {
+        // Créer le contenu de l'email
+        $email = "To: $to\r\n";
+        if ($cc) {
             $email .= "Cc: $cc\r\n";
         }
-        
-        if (!empty($bcc)) {
+        if ($bcc) {
             $email .= "Bcc: $bcc\r\n";
         }
-        
         $email .= "Subject: $subject\r\n";
-        $email .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        $email .= "\r\n$body";
+        $email .= "MIME-Version: 1.0\r\n";
+        $email .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $email .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+        $email .= $body;
         
-        // Encoder l'email en base64url
+        // Encoder l'email en base64
         $encodedEmail = rtrim(strtr(base64_encode($email), '+/', '-_'), '=');
+        
+        // Créer le message
+        $message = new Google\Service\Gmail\Message();
+        $message->setRaw($encodedEmail);
         
         // Créer le brouillon
         $draft = new Google\Service\Gmail\Draft();
-        $message = new Google\Service\Gmail\Message();
-        $message->setRaw($encodedEmail);
         $draft->setMessage($message);
         
+        // Sauvegarder le brouillon
         $result = $service->users_drafts->create('me', $draft);
+        
+        // Logger la requête et la réponse
+        logGmailRequest('createDraft', $result);
         
         return [
             'success' => true,
             'draftId' => $result->getId(),
-            'message' => 'Brouillon créé avec succès'
+            'messageId' => $result->getMessage()->getId()
         ];
     } catch (Exception $e) {
+        // En cas d'erreur, logger et retourner un tableau avec l'erreur
+        logGmailRequest('createDraft', 'Erreur: ' . $e->getMessage());
         return [
             'success' => false,
             'error' => $e->getMessage()

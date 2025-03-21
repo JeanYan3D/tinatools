@@ -18,12 +18,12 @@ $client = new Google\Client();
 $client->setApplicationName('Tina Gmail Integration');
 
 // Vérifier si nous sommes sur Heroku
-$isHeroku = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON') ? true : false;
+$isHeroku = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON') ? true : false;
 
 // Configurer les identifiants OAuth
 if ($isHeroku) {
-    // Sur Heroku, utiliser la variable d'environnement
-    $credentials_json = getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON');
+    // Sur Heroku, utiliser la variable d'environnement spécifique pour OAuth
+    $credentials_json = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON');
     $credentials = json_decode($credentials_json, true);
     $client->setAuthConfig($credentials);
 } else {
