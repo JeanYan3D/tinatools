@@ -176,7 +176,7 @@ try {
 
         'results' => [
             [
-                'tool_call_id' => $toolCallId,
+                'toolCallId' => $toolCallId,
                 'result' => $result
             ]
         ]
