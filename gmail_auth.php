@@ -38,7 +38,7 @@ if ($isHeroku) {
     $client->setAuthConfig($credentials);
 } else {
     // En local, utiliser le fichier de clé OAuth
-    $client->setAuthConfig('client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
+    $client->setAuthConfig(__DIR__ . '/client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
 }
 
 // Définir l'URL de redirection après authentification

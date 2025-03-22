@@ -13,6 +13,9 @@ error_reporting(E_ALL);
 // Inclure l'autoloader de Composer
 require_once __DIR__ . '/vendor/autoload.php';
 
+// Inclure le fichier de configuration de la base de données
+require_once __DIR__ . '/db_config.php';
+
 // Créer un client Google
 $client = new Google\Client();
 $client->setApplicationName('Tina Gmail Integration');
@@ -28,7 +31,7 @@ if ($isHeroku) {
     $client->setAuthConfig($credentials);
 } else {
     // En local, utiliser le fichier de clé OAuth
-    $client->setAuthConfig('client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
+    $client->setAuthConfig(__DIR__ . '/client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
 }
 
 // Définir l'URL de redirection
@@ -56,7 +59,10 @@ if (isset($_GET['code'])) {
     
     // Sauvegarder le token
     if ($isHeroku) {
-        // Sur Heroku, afficher les instructions pour mettre à jour la variable d'environnement
+        // Sur Heroku, sauvegarder le token dans la base de données
+        saveTokenToDb('gmail', $token);
+        
+        // Afficher les instructions et le token pour référence
         $token_json = json_encode($token);
         echo '<!DOCTYPE html>
         <html lang="fr">
@@ -70,30 +76,30 @@ if (isset($_GET['code'])) {
                     max-width: 800px;
                     margin: 0 auto;
                     padding: 20px;
-                    text-align: center;
+                    line-height: 1.6;
+                }
+                h1 {
+                    color: #4285f4;
                 }
                 .success {
                     background-color: #d4edda;
                     color: #155724;
                     padding: 15px;
-                    border-radius: 5px;
-                    margin-bottom: 20px;
-                }
-                .warning {
-                    background-color: #fff3cd;
-                    color: #856404;
-                    padding: 15px;
-                    border-radius: 5px;
+                    border-radius: 4px;
                     margin-bottom: 20px;
                 }
                 .code-box {
                     background-color: #f8f9fa;
                     border: 1px solid #ddd;
-                    border-radius: 5px;
+                    border-radius: 4px;
                     padding: 15px;
-                    text-align: left;
                     overflow-x: auto;
-                    margin: 20px 0;
+                    margin-bottom: 20px;
+                }
+                pre {
+                    margin: 0;
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
                 }
                 .btn {
                     display: inline-block;
@@ -101,8 +107,8 @@ if (isset($_GET['code'])) {
                     color: white;
                     padding: 10px 20px;
                     text-decoration: none;
-                    border-radius: 5px;
-                    margin-top: 20px;
+                    border-radius: 4px;
+                    font-weight: bold;
                 }
                 .btn:hover {
                     background-color: #3367d6;
@@ -110,23 +116,21 @@ if (isset($_GET['code'])) {
             </style>
         </head>
         <body>
-            <h1>Authentification Gmail réussie</h1>
+            <h1>Authentification Gmail réussie !</h1>
             <div class="success">
-                <p>Vous avez été authentifié avec succès auprès de Gmail.</p>
+                <p>Le token d\'accès a été obtenu avec succès et sauvegardé dans la base de données.</p>
             </div>
-            <div class="warning">
-                <h2>Action requise</h2>
-                <p>Vous devez mettre à jour la variable d\'environnement <strong>GMAIL_TOKEN_JSON</strong> sur Heroku avec le token ci-dessous :</p>
-            </div>
+            <h2>Token obtenu (pour référence) :</h2>
             <div class="code-box">
                 <pre>' . htmlspecialchars($token_json) . '</pre>
             </div>
-            <p>Copiez ce token et mettez à jour la variable d\'environnement dans les paramètres de votre application Heroku.</p>
+            <p>Le token a été automatiquement sauvegardé dans la base de données.</p>
             <a href="test_gmail_api.php" class="btn">Retour aux tests Gmail</a>
         </body>
         </html>';
     } else {
-        // En local, sauvegarder dans un fichier
+        // En local, sauvegarder dans la base de données et dans le fichier pour compatibilité
+        saveTokenToDb('gmail', $token);
         file_put_contents('gmail_token.json', json_encode($token));
         
         // Afficher un message de succès
@@ -142,13 +146,16 @@ if (isset($_GET['code'])) {
                     max-width: 800px;
                     margin: 0 auto;
                     padding: 20px;
-                    text-align: center;
+                    line-height: 1.6;
+                }
+                h1 {
+                    color: #4285f4;
                 }
                 .success {
                     background-color: #d4edda;
                     color: #155724;
                     padding: 15px;
-                    border-radius: 5px;
+                    border-radius: 4px;
                     margin-bottom: 20px;
                 }
                 .btn {
@@ -157,8 +164,8 @@ if (isset($_GET['code'])) {
                     color: white;
                     padding: 10px 20px;
                     text-decoration: none;
-                    border-radius: 5px;
-                    margin-top: 20px;
+                    border-radius: 4px;
+                    font-weight: bold;
                 }
                 .btn:hover {
                     background-color: #3367d6;
@@ -166,10 +173,9 @@ if (isset($_GET['code'])) {
             </style>
         </head>
         <body>
-            <h1>Authentification Gmail réussie</h1>
+            <h1>Authentification Gmail réussie !</h1>
             <div class="success">
-                <p>Vous avez été authentifié avec succès auprès de Gmail.</p>
-                <p>Les tokens d\'accès ont été sauvegardés et vous pouvez maintenant utiliser les fonctionnalités Gmail.</p>
+                <p>Le token d\'accès a été obtenu avec succès et sauvegardé dans la base de données et dans un fichier local.</p>
             </div>
             <a href="test_gmail_api.php" class="btn">Retour aux tests Gmail</a>
         </body>

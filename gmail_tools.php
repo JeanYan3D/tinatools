@@ -15,6 +15,9 @@ error_reporting(E_ALL);
 // Inclure l'autoloader de Composer
 require_once __DIR__ . '/vendor/autoload.php';
 
+// Inclure le fichier de configuration de la base de données
+require_once 'db_config.php';
+
 // Fichier de log
 $log_file = __DIR__ . '/gmail_tools.log';
 
@@ -33,73 +36,111 @@ function logGmailRequest($request, $response) {
  * @return Google\Client Client Google authentifié
  */
 function getGmailClient() {
+    // Vérifier si nous sommes sur Heroku
+    $isHeroku = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON') ? true : false;
+    
+    // Récupérer les informations d'identification OAuth
+    $credentials_path = 'credentials.json';
+    if ($isHeroku) {
+        $credentials_json = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON');
+    } else {
+        $credentials_json = file_get_contents($credentials_path);
+    }
+    
+    // Créer le client Google API
     $client = new Google\Client();
     $client->setApplicationName('Tina Gmail Integration');
     
-    // Ajouter tous les scopes nécessaires pour Gmail
+    // Définir les scopes nécessaires
     $client->setScopes([
-        Google\Service\Gmail::GMAIL_READONLY,  // Pour lire et rechercher des emails
-        Google\Service\Gmail::GMAIL_COMPOSE,   // Pour créer des brouillons
-        Google\Service\Docs::DOCUMENTS,        // Conserver les scopes existants
-        Google\Service\Drive::DRIVE,
+        Google\Service\Gmail::GMAIL_READONLY,
+        Google\Service\Gmail::GMAIL_COMPOSE,
+        Google\Service\Gmail::GMAIL_MODIFY,
         Google\Service\Drive::DRIVE_FILE
     ]);
-    
-    // Vérifier si nous sommes sur Heroku (variable d'environnement définie)
-    $isHeroku = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON') ? true : false;
     
     // Configuration des identifiants OAuth
     if ($isHeroku) {
         // Sur Heroku, utiliser la variable d'environnement pour les identifiants OAuth
-        $credentials_json = getenv('GOOGLE_OAUTH_CREDENTIALS_JSON');
         $credentials = json_decode($credentials_json, true);
         $client->setAuthConfig($credentials);
         
         // Définir l'URL de redirection pour Heroku
-        $redirect_uri = 'https://tinatools-gdocs-8657da134f6d.herokuapp.com/oauth_callback.php';
+        $redirect_uri = 'https://tinatools-gdocs.herokuapp.com/oauth_callback.php';
         $client->setRedirectUri($redirect_uri);
-        
-        // Récupérer le token depuis la variable d'environnement
-        $token_json = getenv('GMAIL_TOKEN_JSON');
-        if ($token_json) {
-            $token = json_decode($token_json, true);
-            $client->setAccessToken($token);
-        }
     } else {
         // En local, utiliser les fichiers
-        $client->setAuthConfig('client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
+        $client->setAuthConfig(__DIR__ . '/client_secret_897210672149-bdk9e05vo6gmnvnqdv0572ebt5voobe0.apps.googleusercontent.com.json');
         $redirect_uri = 'http://localhost/tinatools/oauth_callback.php';
         $client->setRedirectUri($redirect_uri);
-        
-        // Charger le token depuis le fichier local
-        if (file_exists('gmail_token.json')) {
-            $token_json = file_get_contents('gmail_token.json');
-            $token = json_decode($token_json, true);
-            $client->setAccessToken($token);
+    }
+    
+    // Charger le token d'accès précédemment sauvegardé
+    $token_path = 'token.json';
+    
+    // Essayer d'abord de récupérer le token depuis la base de données
+    $token = getTokenFromDb('gmail');
+    
+    if (!$token) {
+        // Si le token n'existe pas dans la base de données
+        if ($isHeroku) {
+            // Sur Heroku, essayer la variable d'environnement
+            $token_json = getenv('GMAIL_TOKEN_JSON');
+            if ($token_json) {
+                $token = json_decode($token_json, true);
+                // Sauvegarder le token dans la base de données pour la prochaine fois
+                saveTokenToDb('gmail', $token);
+            }
+        } else {
+            // En local, essayer de récupérer le token depuis le fichier
+            if (file_exists($token_path)) {
+                $token = json_decode(file_get_contents($token_path), true);
+                // Sauvegarder le token dans la base de données pour la prochaine fois
+                saveTokenToDb('gmail', $token);
+            }
         }
     }
     
-    // Vérifier si le token est expiré
+    if (isset($token)) {
+        $client->setAccessToken($token);
+    }
+    
+    // Rafraîchir le token s'il est expiré
     if ($client->isAccessTokenExpired()) {
-        // Si nous avons un refresh token, on l'utilise pour obtenir un nouveau token
         if ($client->getRefreshToken()) {
-            $client->fetchAccessTokenWithRefreshToken($client->getRefreshToken());
-            
-            // Sauvegarder le nouveau token
-            if ($isHeroku) {
-                // Sur Heroku, on ne peut pas sauvegarder directement, on affiche un message
-                echo '<div class="warning">
-                    <h2>Token expiré</h2>
-                    <p>Le token d\'accès a expiré et a été renouvelé. Vous devez mettre à jour la variable d\'environnement GMAIL_TOKEN_JSON sur Heroku avec le nouveau token :</p>
-                    <pre>' . json_encode($client->getAccessToken()) . '</pre>
-                </div>';
-            } else {
-                // En local, on sauvegarde dans le fichier
-                file_put_contents('gmail_token.json', json_encode($client->getAccessToken()));
+            try {
+                // Rafraîchir le token
+                $client->fetchAccessTokenWithRefreshToken($client->getRefreshToken());
+                
+                // Sauvegarder le nouveau token
+                $new_token = $client->getAccessToken();
+                
+                // Sauvegarder le token dans la base de données (que ce soit Heroku ou local)
+                saveTokenToDb('gmail', $new_token);
+                
+                if ($isHeroku) {
+                    // Ajouter un avertissement pour informer l'utilisateur que le token a été rafraîchi
+                    $warning = "<!-- WARNING: Le token Gmail a été rafraîchi automatiquement. Le nouveau token a été sauvegardé dans la base de données. -->\n";
+                    $_ENV['TOKEN_REFRESHED_WARNING'] = $warning;
+                    
+                    // Journaliser le rafraîchissement du token
+                    error_log('Token Gmail rafraîchi et sauvegardé dans la base de données. Nouveau token: ' . json_encode($new_token));
+                } else {
+                    // En local, sauvegarder également le token dans le fichier pour compatibilité
+                    file_put_contents($token_path, json_encode($new_token));
+                    error_log('Token Gmail rafraîchi et sauvegardé dans la base de données et le fichier local.');
+                }
+            } catch (Exception $e) {
+                // En cas d'erreur, journaliser l'erreur
+                error_log('Erreur lors du rafraîchissement du token : ' . $e->getMessage());
+                
+                // Rediriger vers la page d'authentification
+                header('Location: oauth.php');
+                exit;
             }
         } else {
-            // Si nous n'avons pas de refresh token, on redirige vers l'authentification
-            header('Location: gmail_auth.php');
+            // Rediriger vers la page d'authentification
+            header('Location: oauth.php');
             exit;
         }
     }
