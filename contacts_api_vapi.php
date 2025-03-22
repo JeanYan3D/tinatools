@@ -173,7 +173,7 @@ try {
     
     // Préparer la réponse au format attendu par Vapi.ai
     $response = [
-        'success' => true,
+
         'results' => [
             [
                 'tool_call_id' => $toolCallId,
@@ -191,7 +191,6 @@ try {
     
     // Gérer les erreurs au format attendu par Vapi.ai
     $response = [
-        'success' => false,
         'results' => [
             [
                 'tool_call_id' => $toolCallId,
