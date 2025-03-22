@@ -104,6 +104,10 @@ Tina peut désormais interagir avec Gmail grâce à l'intégration de l'API Gmai
    - Paramètres : `to` (string), `subject` (string), `body` (string), `cc` (string, optionnel), `bcc` (string, optionnel)
    - Exemple de requête : `{"to": "destinataire@example.com", "subject": "Sujet", "body": "Contenu du message"}`
 
+4. **AccessContacts** : Accède aux contacts Gmail
+   - Fonctionnalités : Recherche, liste et récupération des détails des contacts
+   - Utilise l'API Google People via des appels REST directs
+
 ### Authentification Gmail
 
 L'authentification à Gmail utilise OAuth 2.0, comme pour Google Docs. Le processus est le suivant :
@@ -137,6 +141,53 @@ Pour que l'intégration Gmail fonctionne sur Heroku, les variables d'environneme
    - Vapi.ai envoie une requête à `gmail_api.php` avec l'outil `CreateDraft`
    - L'API extrait les paramètres et appelle la fonction `createDraft` dans `gmail_tools.php`
    - L'ID du brouillon créé est renvoyé à Vapi.ai
+
+## Mises à jour récentes
+
+### Intégration de l'API Gmail avec la base de données MariaDB
+
+1. **Objectif**
+   - Remplacer le stockage des tokens OAuth dans des fichiers ou variables d'environnement par une base de données MariaDB
+   - Améliorer la sécurité et la gestion des tokens d'authentification
+   - Simplifier le déploiement et la maintenance de l'application
+
+2. **Configuration de la base de données**
+   - Base de données MariaDB configurée avec les paramètres suivants :
+     - Hôte : 51.161.198.217 (ou localhost si déployé sur le même serveur)
+     - Base de données : tinatools
+     - Utilisateur : tinatools
+     - Mot de passe : nv2c_61J7!!
+   - Table `oauth_tokens` créée avec la structure suivante :
+     - `id` : INT AUTO_INCREMENT PRIMARY KEY
+     - `token_type` : VARCHAR(50) NOT NULL
+     - `token_data` : TEXT NOT NULL
+     - `created_at` : TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+     - `updated_at` : TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+3. **Modifications apportées**
+   - Création du fichier `db_config.php` pour la gestion de la connexion à la base de données
+   - Implémentation des fonctions `getTokenFromDb()` et `saveTokenToDb()` pour gérer les tokens
+   - Mise à jour de `gmail_tools.php` pour utiliser la base de données en priorité
+   - Modification de `oauth_callback.php` pour sauvegarder les tokens dans la base de données
+   - Correction des chemins de fichiers en utilisant des chemins absolus avec `__DIR__`
+
+4. **Flux d'authentification**
+   - L'utilisateur accède à `gmail_auth.php` pour lancer le processus d'authentification
+   - Après autorisation, l'utilisateur est redirigé vers `oauth_callback.php`
+   - Le token est récupéré et sauvegardé dans la base de données
+   - Les requêtes ultérieures à l'API Gmail utilisent le token stocké dans la base de données
+   - Si le token est expiré, il est automatiquement rafraîchi et mis à jour dans la base de données
+
+5. **Avantages**
+   - Centralisation de la gestion des tokens
+   - Amélioration de la sécurité (pas de tokens dans les fichiers)
+   - Simplification du déploiement (pas besoin de mettre à jour les variables d'environnement)
+   - Facilité de maintenance et de débogage
+
+6. **Prochaines étapes**
+   - Tester l'intégration en environnement de production
+   - Mettre en place une stratégie de sauvegarde de la base de données
+   - Étendre cette approche à d'autres services Google (Docs, Drive)
 
 ## Structure des requêtes et réponses
 
@@ -278,3 +329,59 @@ Pour que l'intégration Gmail fonctionne sur Heroku, les variables d'environneme
 4. **Améliorer la gestion des erreurs**
    - Ajouter plus de détails dans les logs d'erreur
    - Mettre en place un système de notification en cas d'échec
+
+## Fonctionnalités de l'API Contacts
+
+### Fichiers principaux
+
+1. **contacts_tools.php**
+   - Contient les fonctions pour interagir avec l'API Google People (Contacts)
+   - Utilise des appels REST directs plutôt que la classe Google\Service\People
+   - Fonctions principales :
+     - `getContactsClient()` : Obtient un client Google authentifié pour l'API People
+     - `listContacts()` : Liste les contacts de l'utilisateur
+     - `searchContacts()` : Recherche des contacts par nom ou email
+     - `getContactDetails()` : Récupère les détails d'un contact spécifique
+     - `findContactByEmail()` : Recherche un contact par adresse email
+     - `findContactsByName()` : Recherche des contacts par nom
+     - `getEmailFromName()` : Récupère l'adresse email d'un contact à partir de son nom
+
+2. **test_contacts_api.php**
+   - Interface de test pour les fonctionnalités de contacts
+   - Permet de tester les différentes fonctions de recherche et de récupération de contacts
+
+### Intégration avec Vapi.ai
+
+L'intégration des contacts avec Vapi.ai permettra à Tina de :
+1. Rechercher des contacts par nom ou email
+2. Récupérer les détails d'un contact
+3. Utiliser les contacts pour composer des emails (ex: "Envoie un email à Jean")
+
+## Déploiement et Environnements
+
+### Configuration de la Base de Données
+
+- **Base de données MariaDB externe**
+  - Hôte : 51.161.198.217
+  - Base de données : tinatools
+  - Utilisateur : tinatools
+  - Table principale : oauth_tokens
+  - **Important** : Cette base de données est partagée entre l'environnement local et Heroku
+  - Les tokens OAuth sont stockés dans cette base de données, ce qui signifie qu'une fois authentifié en local, l'application sur Heroku peut utiliser le même token sans réauthentification
+
+### Déploiement sur Heroku
+
+1. **Commiter les modifications**
+   ```
+   git add composer.json composer.lock contacts_tools.php test_contacts_api.php gmail_auth.php
+   git commit -m "Ajout de l'intégration des contacts Gmail avec l'API Google People"
+   ```
+
+2. **Déployer sur Heroku**
+   ```
+   git push heroku master
+   ```
+
+3. **Vérification après déploiement**
+   - Tester les fonctionnalités de contacts sur Heroku
+   - Vérifier les logs Heroku en cas de problème : `heroku logs --tail`
