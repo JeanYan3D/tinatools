@@ -95,7 +95,12 @@ function extractFunctionAndParams($requestData) {
     if (isset($requestData['message']['toolCalls'][0]['function']['name'])) {
         $function = $requestData['message']['toolCalls'][0]['function']['name'];
         if (isset($requestData['message']['toolCalls'][0]['function']['arguments'])) {
-            $params = json_decode($requestData['message']['toolCalls'][0]['function']['arguments'], true);
+            // Vérifier si arguments est déjà un tableau ou un objet
+            if (is_array($requestData['message']['toolCalls'][0]['function']['arguments'])) {
+                $params = $requestData['message']['toolCalls'][0]['function']['arguments'];
+            } else {
+                $params = json_decode($requestData['message']['toolCalls'][0]['function']['arguments'], true);
+            }
         }
         return true;
     }
@@ -104,7 +109,12 @@ function extractFunctionAndParams($requestData) {
     if (isset($requestData['message']['tool_calls'][0]['function']['name'])) {
         $function = $requestData['message']['tool_calls'][0]['function']['name'];
         if (isset($requestData['message']['tool_calls'][0]['function']['arguments'])) {
-            $params = json_decode($requestData['message']['tool_calls'][0]['function']['arguments'], true);
+            // Vérifier si arguments est déjà un tableau ou un objet
+            if (is_array($requestData['message']['tool_calls'][0]['function']['arguments'])) {
+                $params = $requestData['message']['tool_calls'][0]['function']['arguments'];
+            } else {
+                $params = json_decode($requestData['message']['tool_calls'][0]['function']['arguments'], true);
+            }
         }
         return true;
     }
@@ -124,7 +134,16 @@ function extractFunctionAndParams($requestData) {
             // Vérifier si ce nœud contient function et params/arguments
             if (isset($data['function']) && (isset($data['params']) || isset($data['arguments']))) {
                 $function = $data['function'];
-                $params = isset($data['params']) ? $data['params'] : json_decode($data['arguments'], true);
+                if (isset($data['params'])) {
+                    $params = $data['params'];
+                } else {
+                    // Vérifier si arguments est déjà un tableau ou un objet
+                    if (is_array($data['arguments'])) {
+                        $params = $data['arguments'];
+                    } else {
+                        $params = json_decode($data['arguments'], true);
+                    }
+                }
                 return true;
             }
             
