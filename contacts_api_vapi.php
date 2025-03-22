@@ -177,7 +177,7 @@ try {
         'results' => [
             [
                 'tool_call_id' => $toolCallId,
-                'data' => $result
+                'result' => $result
             ]
         ]
     ];
@@ -194,7 +194,7 @@ try {
         'results' => [
             [
                 'tool_call_id' => $toolCallId,
-                'error' => $e->getMessage()
+                'result' => $e->getMessage()
             ]
         ]
     ];
