@@ -176,7 +176,7 @@ try {
         'success' => true,
         'results' => [
             [
-                'toolCallId' => $toolCallId,
+                'tool_call_id' => $toolCallId,
                 'data' => $result
             ]
         ]
@@ -194,7 +194,7 @@ try {
         'success' => false,
         'results' => [
             [
-                'toolCallId' => $toolCallId,
+                'tool_call_id' => $toolCallId,
                 'error' => $e->getMessage()
             ]
         ]
@@ -205,4 +205,4 @@ try {
 }
 
 // Journaliser la réponse pour le débogage
-file_put_contents('contacts_api_vapi.log', date('Y-m-d H:i:s') . " - Réponse envoyée: " . json_encode(['success' => isset($result), 'toolCallId' => $toolCallId, 'data' => $result ?? $e->getMessage()]) . "\n", FILE_APPEND);
+file_put_contents('contacts_api_vapi.log', date('Y-m-d H:i:s') . " - Réponse envoyée: " . json_encode(['success' => isset($result), 'tool_call_id' => $toolCallId, 'data' => $result ?? $e->getMessage()]) . "\n", FILE_APPEND);
