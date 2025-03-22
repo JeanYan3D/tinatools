@@ -24,7 +24,8 @@ $client->setScopes([
     Google\Service\Gmail::GMAIL_COMPOSE,
     Google\Service\Docs::DOCUMENTS,
     Google\Service\Drive::DRIVE,
-    Google\Service\Drive::DRIVE_FILE
+    Google\Service\Drive::DRIVE_FILE,
+    'https://www.googleapis.com/auth/contacts.readonly'  // Ajout du scope pour les contacts
 ]);
 
 // Vérifier si nous sommes sur Heroku
